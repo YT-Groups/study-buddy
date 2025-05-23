@@ -10,8 +10,19 @@ import { Search, Upload, FileText } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { FlashcardDeck } from "@/contexts/UserContext";
-import { generateFlashcardsFromText, readFileContent } from "@/lib/flashcardGeneration";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  generateFlashcardsFromLLM,
+  readFileContent,
+} from "@/lib/flashcardGeneration";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useParams, useNavigate } from "react-router-dom";
 import { FlashcardWithMetadata } from "@/lib/spaced-repetition";
@@ -33,22 +44,26 @@ export default function Flashcards() {
   const [newDeckTitle, setNewDeckTitle] = useState("");
   const [newDeckSubject, setNewDeckSubject] = useState("");
   const [currentDeckId, setCurrentDeckId] = useState<string | null>(null);
-  
+
   const acceptedFileTypes: FileTypeMap = {
-    'application/pdf': '.pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'application/msword': '.doc',
-    'text/plain': '.txt'
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      ".docx",
+    "application/msword": ".doc",
+    "text/plain": ".txt",
   };
 
-  const acceptedExtensions = Object.values(acceptedFileTypes).join(',');
-  
-  const filteredDecks = searchQuery && user?.flashcardDecks 
-    ? user.flashcardDecks.filter(deck => 
-        deck.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        deck.subject?.toLowerCase().includes(searchQuery.toLowerCase()))
-    : user?.flashcardDecks ?? [];
-  
+  const acceptedExtensions = Object.values(acceptedFileTypes).join(",");
+
+  const filteredDecks =
+    searchQuery && user?.flashcardDecks
+      ? user.flashcardDecks.filter(
+          (deck) =>
+            deck.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            deck.subject?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : user?.flashcardDecks ?? [];
+
   const handleDeckSelect = (deck: FlashcardDeck) => {
     setSelectedDeck(deck);
   };
@@ -56,14 +71,14 @@ export default function Flashcards() {
   const handleUpdateProgress = (cardId: string, mastered: boolean) => {
     if (!selectedDeck) return;
 
-    const updatedCards = selectedDeck.cards.map(card => 
+    const updatedCards = selectedDeck.cards.map((card) =>
       card.id === cardId ? { ...card, mastered } : card
     );
 
     const updatedDeck = {
       ...selectedDeck,
       cards: updatedCards,
-      lastStudied: new Date().toISOString()
+      lastStudied: new Date().toISOString(),
     };
 
     updateFlashcardDeck(selectedDeck.id, updatedDeck);
@@ -84,7 +99,7 @@ export default function Flashcards() {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
@@ -99,17 +114,17 @@ export default function Flashcards() {
 
   const handleFiles = (files: FileList) => {
     const validFiles: File[] = [];
-    
-    Array.from(files).forEach(file => {
+
+    Array.from(files).forEach((file) => {
       if (Object.keys(acceptedFileTypes).includes(file.type)) {
         validFiles.push(file);
       } else {
         toast.error(`File type not supported: ${file.name}`);
       }
     });
-    
+
     if (validFiles.length > 0) {
-      setSelectedFiles(prev => [...prev, ...validFiles]);
+      setSelectedFiles((prev) => [...prev, ...validFiles]);
       toast.success(`${validFiles.length} file(s) added successfully`);
     }
   };
@@ -128,7 +143,7 @@ export default function Flashcards() {
       toast.error("No deck selected");
       return;
     }
-    
+
     try {
       toast.loading("Processing your files to create flashcards...");
 
@@ -136,12 +151,12 @@ export default function Flashcards() {
       const allCards = [];
       for (const file of selectedFiles) {
         const content = await readFileContent(file);
-        const cards = await generateFlashcardsFromText(content);
+        const cards = await generateFlashcardsFromLLM(content);
         allCards.push(...cards);
       }
 
       // Update the deck with the generated cards
-      const deck = user?.flashcardDecks.find(d => d.id === currentDeckId);
+      const deck = user?.flashcardDecks.find((d) => d.id === currentDeckId);
       if (!deck) {
         toast.error("Deck not found");
         return;
@@ -149,12 +164,14 @@ export default function Flashcards() {
 
       updateFlashcardDeck(currentDeckId, {
         ...deck,
-        description: `Generated from ${selectedFiles.map(f => f.name).join(", ")}`,
+        description: `Generated from ${selectedFiles
+          .map((f) => f.name)
+          .join(", ")}`,
         cardCount: allCards.length,
         masteredCount: 0,
-        cards: allCards
+        cards: allCards,
       });
-      
+
       toast.dismiss();
       toast.success("Flashcards created successfully!");
       clearFiles();
@@ -168,7 +185,7 @@ export default function Flashcards() {
   // Load deck from URL parameter
   useEffect(() => {
     if (deckId && user?.flashcardDecks) {
-      const deck = user.flashcardDecks.find(d => d.id === deckId);
+      const deck = user.flashcardDecks.find((d) => d.id === deckId);
       if (deck) {
         setSelectedDeck(deck);
       } else {
@@ -180,36 +197,38 @@ export default function Flashcards() {
 
   // If a deck is selected, show the study view
   if (selectedDeck) {
-    const cardsWithMetadata: FlashcardWithMetadata[] = selectedDeck.cards.map(card => ({
-      id: card.id,
-      front: card.front,
-      back: card.back,
-      metadata: {
-        lastReviewed: new Date(card.lastReviewed || Date.now()),
-        nextReview: new Date(card.lastReviewed || Date.now()),
-        interval: 1,
-        easeFactor: 2.5,
-        consecutiveCorrect: 0,
-        totalReviews: 0
-      },
-      masteryLevel: card.mastered ? 100 : 0
-    }));
+    const cardsWithMetadata: FlashcardWithMetadata[] = selectedDeck.cards.map(
+      (card) => ({
+        id: card.id,
+        front: card.front,
+        back: card.back,
+        metadata: {
+          lastReviewed: new Date(card.lastReviewed || Date.now()),
+          nextReview: new Date(card.lastReviewed || Date.now()),
+          interval: 1,
+          easeFactor: 2.5,
+          consecutiveCorrect: 0,
+          totalReviews: 0,
+        },
+        masteryLevel: card.mastered ? 100 : 0,
+      })
+    );
 
     return (
       <AppLayout username={user?.name.split(" ")[0]}>
-        <FlashcardStudy 
+        <FlashcardStudy
           deck={cardsWithMetadata}
           onUpdateDeck={(updatedCards) => {
             updateFlashcardDeck(selectedDeck.id, {
               ...selectedDeck,
-              cards: updatedCards.map(card => ({
+              cards: updatedCards.map((card) => ({
                 id: card.id,
                 front: card.front,
                 back: card.back,
                 mastered: card.masteryLevel === 100,
-                lastReviewed: card.metadata.lastReviewed.toISOString()
+                lastReviewed: card.metadata.lastReviewed.toISOString(),
               })),
-              lastStudied: new Date().toISOString()
+              lastStudied: new Date().toISOString(),
             });
           }}
           onClose={() => setSelectedDeck(null)}
@@ -253,7 +272,7 @@ export default function Flashcards() {
               />
             </div>
           </div>
-          
+
           <div className="flex gap-2">
             <Dialog open={isCreating} onOpenChange={setIsCreating}>
               <DialogTrigger asChild>
@@ -269,7 +288,7 @@ export default function Flashcards() {
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="deck-title">Deck Title</Label>
-                    <Input 
+                    <Input
                       id="deck-title"
                       value={newDeckTitle}
                       onChange={(e) => setNewDeckTitle(e.target.value)}
@@ -278,7 +297,7 @@ export default function Flashcards() {
                   </div>
                   <div>
                     <Label htmlFor="deck-subject">Subject (optional)</Label>
-                    <Input 
+                    <Input
                       id="deck-subject"
                       value={newDeckSubject}
                       onChange={(e) => setNewDeckSubject(e.target.value)}
@@ -287,25 +306,36 @@ export default function Flashcards() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
-                  <Button onClick={() => {
-                    if (!newDeckTitle) {
-                      toast.error("Please enter a title for your deck");
-                      return;
-                    }
-                    const newDeck: Omit<FlashcardDeck, 'id'> = {
-                      title: newDeckTitle,
-                      description: "Add files to generate flashcards",
-                      cardCount: 0,
-                      masteredCount: 0,
-                      lastStudied: new Date().toISOString(),
-                      subject: newDeckSubject || "General",
-                      color: "#" + Math.floor(Math.random()*16777215).toString(16),
-                      cards: []
-                    };
-                    const deck = addFlashcardDeck(newDeck);
-                    handleDeckCreated(deck.id);
-                  }}>Create Deck</Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCreating(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!newDeckTitle) {
+                        toast.error("Please enter a title for your deck");
+                        return;
+                      }
+                      const newDeck: Omit<FlashcardDeck, "id"> = {
+                        title: newDeckTitle,
+                        description: "Add files to generate flashcards",
+                        cardCount: 0,
+                        masteredCount: 0,
+                        lastStudied: new Date().toISOString(),
+                        subject: newDeckSubject || "General",
+                        color:
+                          "#" +
+                          Math.floor(Math.random() * 16777215).toString(16),
+                        cards: [],
+                      };
+                      const deck = addFlashcardDeck(newDeck);
+                      handleDeckCreated(deck.id);
+                    }}
+                  >
+                    Create Deck
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -328,12 +358,14 @@ export default function Flashcards() {
                   </Button>
                 </div>
               </CardHeader>
-              
+
               <CardContent>
                 {/* File Upload Area */}
                 <div
                   className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                    dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/20"
+                    dragActive
+                      ? "border-primary bg-primary/5"
+                      : "border-muted-foreground/20"
                   }`}
                   onDragEnter={handleDrag}
                   onDragOver={handleDrag}
@@ -341,9 +373,12 @@ export default function Flashcards() {
                   onDrop={handleDrop}
                 >
                   <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium mb-2">Drop files here or click to browse</h3>
+                  <h3 className="text-lg font-medium mb-2">
+                    Drop files here or click to browse
+                  </h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Supports PDF, Word documents (.doc, .docx), PowerPoint presentations (.ppt, .pptx), and text files
+                    Supports PDF, Word documents (.doc, .docx), PowerPoint
+                    presentations (.ppt, .pptx), and text files
                   </p>
                   <Input
                     type="file"
@@ -354,24 +389,35 @@ export default function Flashcards() {
                     onChange={handleChange}
                   />
                   <Button
-                    onClick={() => document.getElementById("flashcard-file-upload")?.click()}
+                    onClick={() =>
+                      document.getElementById("flashcard-file-upload")?.click()
+                    }
                     variant="outline"
                     className="mx-auto"
                   >
                     Select Files
                   </Button>
                 </div>
-                
+
                 {/* Selected Files */}
                 {selectedFiles.length > 0 && (
                   <div className="mt-6">
-                    <h4 className="font-medium mb-2">Selected Files ({selectedFiles.length})</h4>
+                    <h4 className="font-medium mb-2">
+                      Selected Files ({selectedFiles.length})
+                    </h4>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
                       {selectedFiles.map((file, index) => (
-                        <div key={index} className="flex items-center p-2 bg-secondary/20 rounded">
+                        <div
+                          key={index}
+                          className="flex items-center p-2 bg-secondary/20 rounded"
+                        >
                           <FileText className="h-4 w-4 mr-2" />
-                          <span className="flex-1 text-sm truncate">{file.name}</span>
-                          <span className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                          <span className="flex-1 text-sm truncate">
+                            {file.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {(file.size / 1024 / 1024).toFixed(2)} MB
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -387,19 +433,24 @@ export default function Flashcards() {
                 )}
               </CardContent>
             </Card>
-            
+
             <Card className="lg:col-span-2 frosted-card">
               <CardHeader>
-                <h3 className="text-lg font-medium">Tips for Great Flashcards</h3>
+                <h3 className="text-lg font-medium">
+                  Tips for Great Flashcards
+                </h3>
               </CardHeader>
-              
+
               <CardContent>
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <h4 className="font-medium">📄 Supported File Types</h4>
-                    <p className="text-sm text-muted-foreground">PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx), and Text files</p>
+                    <p className="text-sm text-muted-foreground">
+                      PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx), and
+                      Text files
+                    </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <h4 className="font-medium">🧠 Best for Learning</h4>
                     <ul className="text-sm text-muted-foreground list-disc pl-4 space-y-1">
@@ -408,11 +459,13 @@ export default function Flashcards() {
                       <li>Study guides with questions and answers</li>
                     </ul>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <h4 className="font-medium">✨ How It Works</h4>
                     <p className="text-sm text-muted-foreground">
-                      Our AI will extract key concepts, terms, and definitions from your documents and create flashcards with questions on one side and answers on the other
+                      Our AI will extract key concepts, terms, and definitions
+                      from your documents and create flashcards with questions
+                      on one side and answers on the other
                     </p>
                   </div>
                 </div>
@@ -420,10 +473,10 @@ export default function Flashcards() {
             </Card>
           </div>
         ) : (
-          <DeckGrid 
-            decks={filteredDecks.map(deck => ({
+          <DeckGrid
+            decks={filteredDecks.map((deck) => ({
               ...deck,
-              cards: deck.cards.map(card => ({
+              cards: deck.cards.map((card) => ({
                 id: card.id,
                 front: card.front,
                 back: card.back,
@@ -433,10 +486,10 @@ export default function Flashcards() {
                   interval: 1,
                   easeFactor: 2.5,
                   consecutiveCorrect: 0,
-                  totalReviews: 0
+                  totalReviews: 0,
                 },
-                masteryLevel: card.mastered ? 100 : 0
-              }))
+                masteryLevel: card.mastered ? 100 : 0,
+              })),
             }))}
             onSelectDeck={handleDeckSelect}
             onCreateDeck={handleCreateNew}
