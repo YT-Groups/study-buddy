@@ -64,9 +64,17 @@ async function extractPDFText(file: File): Promise<string> {
  * Extracts text from a Word document
  */
 async function extractWordText(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-  return result.value;
+  try {
+    const buffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+    return result.value;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error extracting Word text:", errorMessage);
+    throw new Error(
+      `Failed to extract text from Word document: ${errorMessage}`
+    );
+  }
 }
 
 /**
@@ -139,70 +147,97 @@ function isValidText(text: string): boolean {
 /**
  * Generates flashcards from text content with simple, reliable parsing
  */
-export async function generateFlashcardsFromText(
-  text: string
-) {
-  const flashcards = [];
+// export async function generateFlashcardsFromText(text: string) {
+//   const flashcards = [];
 
-  // Clean and normalize the text first
-  const cleanedText = cleanText(text);
+//   // Clean and normalize the text first
+//   const cleanedText = cleanText(text);
 
-  // Split into lines
-  const lines = cleanedText.split("\n");
+//   // Split into lines
+//   const lines = cleanedText.split("\n");
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+//   for (let i = 0; i < lines.length; i++) {
+//     const line = lines[i].trim();
 
-    // Skip empty lines or lines that appear to be binary data
-    if (!line || !isValidText(line)) continue;
+//     // Skip empty lines or lines that appear to be binary data
+//     if (!line || !isValidText(line)) continue;
 
-    try {
-      // Check for colon separator (Term: Definition)
-      if (line.includes(":")) {
-        const colonIndex = line.indexOf(":");
-        const front = line.substring(0, colonIndex).trim();
-        const back = line.substring(colonIndex + 1).trim();
+//     try {
+//       // Check for colon separator (Term: Definition)
+//       if (line.includes(":")) {
+//         const colonIndex = line.indexOf(":");
+//         const front = line.substring(0, colonIndex).trim();
+//         const back = line.substring(colonIndex + 1).trim();
 
-        if (front && back && isValidText(front) && isValidText(back)) {
-          flashcards.push(initializeCard(front, back, `card-${i}-${Date.now()}`));
-        }
-      // Check for dash separator (Term - Definition)
-      } else if (line.includes(" - ")) {
-        const dashIndex = line.indexOf(" - ");
-        const front = line.substring(0, dashIndex).trim();
-        const back = line.substring(dashIndex + 3).trim();
+//         if (front && back && isValidText(front) && isValidText(back)) {
+//           flashcards.push(
+//             initializeCard(front, back, `card-${i}-${Date.now()}`)
+//           );
+//         }
+//         // Check for dash separator (Term - Definition)
+//       } else if (line.includes(" - ")) {
+//         const dashIndex = line.indexOf(" - ");
+//         const front = line.substring(0, dashIndex).trim();
+//         const back = line.substring(dashIndex + 3).trim();
 
-        if (front && back && isValidText(front) && isValidText(back)) {
-          flashcards.push({
-            id: `card-${i}-${Date.now()}`,
-            front,
-            back,
-            mastered: false,
-          });
-        }
-      }
-      // Check for question mark (Question? Answer)
-      else if (line.includes("?")) {
-        const questionIndex = line.indexOf("?");
-        const front = line.substring(0, questionIndex + 1).trim();
-        const back = line.substring(questionIndex + 1).trim();
+//         if (front && back && isValidText(front) && isValidText(back)) {
+//           flashcards.push({
+//             id: `card-${i}-${Date.now()}`,
+//             front,
+//             back,
+//             mastered: false,
+//           });
+//         }
+//       }
+//       // Check for question mark (Question? Answer)
+//       else if (line.includes("?")) {
+//         const questionIndex = line.indexOf("?");
+//         const front = line.substring(0, questionIndex + 1).trim();
+//         const back = line.substring(questionIndex + 1).trim();
 
-        if (front && back && isValidText(front) && isValidText(back)) {
-          flashcards.push({
-            id: `card-${i}-${Date.now()}`,
-            front,
-            back,
-            mastered: false,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error processing line:", line, error);
-      continue;
-    }
+//         if (front && back && isValidText(front) && isValidText(back)) {
+//           flashcards.push({
+//             id: `card-${i}-${Date.now()}`,
+//             front,
+//             back,
+//             mastered: false,
+//           });
+//         }
+//       }
+//     } catch (error) {
+//       console.error("Error processing line:", line, error);
+//       continue;
+//     }
+//   }
+
+//   return flashcards;
+// }
+
+/**
+ * Generates flashcards from LLM using a local server
+ */
+export async function generateFlashcardsFromLLM(text: string) {
+  const response = await fetch("http://localhost:8000/generate-flashcards", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }), // optionally include a topic too
+  });
+
+  if (!response.ok) {
+    throw new Error("Flashcard generation failed");
   }
 
-  return flashcards;
+  const data = await response.json();
+
+  // Now we access the `items` field (FlashcardList wrapper)
+  return data.items.map((item: any, i: number) => ({
+    id: `card-${i}-${Date.now()}`,
+    front: item.front,
+    back: item.back,
+    mastered: false,
+  }));
 }
 
 /**

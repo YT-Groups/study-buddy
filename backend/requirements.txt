@@ -1,0 +1,5 @@
+instructor
+openai 
+fastapi
+fastapi[all] 
+uvicorn
