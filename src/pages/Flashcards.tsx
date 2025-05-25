@@ -145,14 +145,31 @@ export default function Flashcards() {
     }
 
     try {
-      toast.loading("Processing your files to create flashcards...");
+      toast.dismiss();
+      toast.message("⏳ Starting flashcard generation...");
 
-      // Read and process each file
       const allCards = [];
+
       for (const file of selectedFiles) {
         const content = await readFileContent(file);
-        const cards = await generateFlashcardsFromLLM(content);
-        allCards.push(...cards);
+        const words = content.split(/\s+/);
+        const chunkSize = 500;
+        const totalChunks = Math.ceil(words.length / chunkSize);
+
+        for (let i = 0; i < totalChunks; i++) {
+          const chunk = words
+            .slice(i * chunkSize, (i + 1) * chunkSize)
+            .join(" ");
+          toast.message(`🔍 Processing chunk ${i + 1} of ${totalChunks}`);
+
+          try {
+            const chunkCards = await generateFlashcardsFromLLM(chunk);
+            allCards.push(...chunkCards);
+          } catch (err) {
+            console.warn(`Chunk ${i + 1} failed:`, err);
+            toast.error(`⚠️ Failed to generate flashcards for chunk ${i + 1}`);
+          }
+        }
       }
 
       // Update the deck with the generated cards
@@ -173,12 +190,13 @@ export default function Flashcards() {
       });
 
       toast.dismiss();
-      toast.success("Flashcards created successfully!");
+      toast.success(`✅ Flashcards created: ${allCards.length}`);
       clearFiles();
       handleUploadComplete();
     } catch (error) {
       toast.dismiss();
-      toast.error("Error generating flashcards. Please try again.");
+      console.error(error);
+      toast.error("❌ Error generating flashcards. Please try again.");
     }
   };
 
