@@ -216,29 +216,51 @@ function isValidText(text: string): boolean {
 /**
  * Generates flashcards from LLM using a local server
  */
-export async function generateFlashcardsFromLLM(text: string) {
-  const response = await fetch("http://localhost:8000/generate-flashcards", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ text }), // optionally include a topic too
-  });
+export async function generateFlashcardsFromLLM(text: string): Promise<Flashcard[]> {
+  const chunks: string[] = [];
+  const words = text.split(/\s+/);
+  const chunkSize = 500; // smaller chunks for slow CPUs
 
-  if (!response.ok) {
-    throw new Error("Flashcard generation failed");
+  for (let i = 0; i < words.length; i += chunkSize) {
+    const chunk = words.slice(i, i + chunkSize).join(" ");
+    chunks.push(chunk);
   }
 
-  const data = await response.json();
+  const allFlashcards: Flashcard[] = [];
 
-  // Now we access the `items` field (FlashcardList wrapper)
-  return data.items.map((item: any, i: number) => ({
-    id: `card-${i}-${Date.now()}`,
-    front: item.front,
-    back: item.back,
-    mastered: false,
-  }));
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    try {
+      const response = await fetch("http://localhost:8000/generate-flashcards", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: chunk }),
+      });
+
+      if (!response.ok) {
+        console.warn(`Failed to generate flashcards for chunk ${i + 1}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const flashcards = data.items.map((item: any, index: number) => ({
+        id: `card-${i}-${index}-${Date.now()}`,
+        front: item.front,
+        back: item.back,
+        mastered: false,
+      }));
+
+      allFlashcards.push(...flashcards);
+    } catch (err) {
+      console.error(`Chunk ${i + 1} failed:`, err);
+    }
+  }
+
+  return allFlashcards;
 }
+
 
 /**
  * Reads the content of a file based on its type

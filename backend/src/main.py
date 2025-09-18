@@ -1,25 +1,22 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
-from openai import OpenAI
-import instructor
-import re
 from fastapi.middleware.cors import CORSMiddleware
+import requests
+import re
+import json
 
-# ✅ Correct: Only initialize FastAPI once
+# Initialize FastAPI
 app = FastAPI()
 
-# ✅ Add CORS middleware before defining routes
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080"],  # Use ["*"] for dev if needed
+    allow_origins=["http://localhost:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ✅ Now wrap the client AFTER middleware setup
-client = instructor.from_openai(OpenAI(base_url="http://localhost:11434/v1", api_key="ollama"))
 
 class Flashcard(BaseModel):
     front: str
@@ -30,7 +27,7 @@ class FlashcardList(BaseModel):
 
 class FlashcardRequest(BaseModel):
     text: str
-    topic: str = None  # Optional for auto-inferred topics
+    topic: str = None
 
 @app.post("/generate-flashcards", response_model=FlashcardList)
 def generate_flashcards(req: FlashcardRequest):
@@ -49,7 +46,7 @@ def generate_flashcards(req: FlashcardRequest):
 
         if not chunks:
             words = text.split()
-            chunks = [(req.topic or "General", " ".join(words[i:i + 800])) for i in range(0, len(words), 800)]
+            chunks = [(req.topic or "General", " ".join(words[i:i + 500])) for i in range(0, len(words), 500)]
 
         return chunks
 
@@ -57,25 +54,34 @@ def generate_flashcards(req: FlashcardRequest):
     all_flashcards = []
 
     for topic, chunk in chunks:
-        prompt = f"Topic: {topic}\n\nContent:\n{chunk}"
+        prompt = f"""
+You are an academic assistant. Generate 3-5 flashcards from the following topic.
+Each flashcard should be a JSON object like this:
+{{"front": "Question?", "back": "Answer."}}
+
+Only output a JSON array.
+
+Topic: {topic}
+
+Content:
+{chunk}
+"""
+
         try:
-            response = client.chat.completions.create(
-                model="mistral",
-                response_model=FlashcardList,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an academic flashcard generator. Generate concise question-answer flashcards from the following lecture content. Each flashcard should be based on one concept."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={"model": "mistral", "prompt": prompt, "stream": False}
             )
-            all_flashcards.extend(response.items)
+            response.raise_for_status()
+            result = response.json()
+            text_output = result.get("response", "").strip()
+
+            flashcard_data = json.loads(text_output)
+            for card in flashcard_data:
+                if 'front' in card and 'back' in card:
+                    all_flashcards.append(Flashcard(front=card['front'], back=card['back']))
         except Exception as e:
-            print(f"Error generating flashcards for topic '{topic}': {e}")
+            print(f"Failed to parse flashcards for topic '{topic}': {e}")
             continue
 
     return FlashcardList(items=all_flashcards)
